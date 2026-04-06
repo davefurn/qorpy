@@ -91,4 +91,4 @@ Engineering: Java Team Cohort 5
 
 Project Stakeholders: Qucoon / Univaciti
 
-License: Internal Use Only (Proprietary)
+License: Internal Use Only (Proprietary)# qorpy
