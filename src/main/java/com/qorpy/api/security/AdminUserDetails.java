@@ -7,6 +7,7 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
+import java.time.OffsetDateTime;
 import java.util.Collection;
 import java.util.List;
 
@@ -38,7 +39,10 @@ public class AdminUserDetails implements UserDetails {
 
     @Override
     public boolean isAccountNonLocked() {
-        return true;
+        // If lockedUntil is null, account is not locked
+        // If lockedUntil is in the past, account is no longer locked
+        return adminUser.getLockedUntil() == null ||
+                adminUser.getLockedUntil().isBefore(OffsetDateTime.now());
     }
 
     @Override
