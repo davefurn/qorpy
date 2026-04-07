@@ -16,9 +16,12 @@ public class AdminUserDetails implements UserDetails {
 
     private final AdminUser adminUser;
 
+    public AdminUser getAdminUser() {
+        return adminUser;
+    }
+
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-
         return List.of(new SimpleGrantedAuthority("ROLE_" + adminUser.getRole().name()));
     }
 
