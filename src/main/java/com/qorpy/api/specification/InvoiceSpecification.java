@@ -95,5 +95,7 @@ public class InvoiceSpecification {
             // cb.and() with empty array → "1=1" match-all predicate
             return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
         };
+
+
     }
 }
