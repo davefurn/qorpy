@@ -1,6 +1,7 @@
 package com.qorpy.api.controller;
 
 import com.qorpy.api.dto.request.admin.AdminUserCreateRequest;
+import com.qorpy.api.dto.request.admin.UpdateAdminUserRequest;
 import com.qorpy.api.dto.response.AdminUserDto;
 import com.qorpy.api.security.AdminUserDetails;
 import com.qorpy.api.service.AdminUserService;
@@ -14,6 +15,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/admin/users")
@@ -36,5 +39,14 @@ public class AdminUserController {
             @AuthenticationPrincipal AdminUserDetails currentUser) {
         AdminUserDto created = adminUserService.createUser(request, currentUser.getAdminUser());
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
+    }
+
+    @PutMapping("/{userId}")
+    public ResponseEntity<AdminUserDto> updateUser(
+            @PathVariable UUID userId,
+            @Valid @RequestBody UpdateAdminUserRequest request,
+            @AuthenticationPrincipal AdminUserDetails currentUser) {
+        AdminUserDto updated = adminUserService.updateUser(userId, request, currentUser.getAdminUser());
+        return ResponseEntity.ok(updated);
     }
 }
