@@ -11,71 +11,25 @@ import org.springframework.data.jpa.domain.Specification;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 /**
  * JPA Specifications for dynamic invoice filtering (US-014).
- * Each method returns a composable Specification that can be chained with .and()
+ *
+ * Key constraint: root.fetch() must NOT be used inside count queries that Spring Data
+ * runs for pagination. We detect count queries via query.getResultType() and skip
+ * the fetch in that case, using a plain join instead.
  */
 public class InvoiceSpecification {
 
     private InvoiceSpecification() {}
 
-    /** Filter by a specific taxpayer UUID */
-    public static Specification<Invoice> hasTaxpayerId(UUID taxpayerId) {
-        if (taxpayerId == null) return null;
-        return (root, query, cb) ->
-                cb.equal(root.get("taxpayer").get("id"), taxpayerId);
-    }
-
-    /** Filter by taxpayer name OR tin (case-insensitive partial match) */
-    public static Specification<Invoice> taxpayerMatches(String search) {
-        if (search == null || search.isBlank()) return null;
-        return (root, query, cb) -> {
-            Join<Invoice, Taxpayer> taxpayerJoin = root.join("taxpayer", JoinType.INNER);
-            String pattern = "%" + search.toLowerCase() + "%";
-            return cb.or(
-                    cb.like(cb.lower(taxpayerJoin.get("name")), pattern),
-                    cb.like(cb.lower(taxpayerJoin.get("tin")),  pattern)
-            );
-        };
-    }
-
-    /** Filter by submission date >= fromDate (inclusive, start of day UTC) */
-    public static Specification<Invoice> submittedFrom(LocalDate fromDate) {
-        if (fromDate == null) return null;
-        return (root, query, cb) -> {
-            OffsetDateTime start = fromDate.atStartOfDay().atOffset(ZoneOffset.UTC);
-            return cb.greaterThanOrEqualTo(root.get("submittedAt"), start);
-        };
-    }
-
-    /** Filter by submission date <= toDate (inclusive, end of day UTC) */
-    public static Specification<Invoice> submittedTo(LocalDate toDate) {
-        if (toDate == null) return null;
-        return (root, query, cb) -> {
-            OffsetDateTime end = toDate.plusDays(1).atStartOfDay().atOffset(ZoneOffset.UTC);
-            return cb.lessThan(root.get("submittedAt"), end);
-        };
-    }
-
-    /** Filter by invoice submission status */
-    public static Specification<Invoice> hasStatus(InvoiceStatus status) {
-        if (status == null) return null;
-        return (root, query, cb) ->
-                cb.equal(root.get("submissionStatus"), status);
-    }
-
-    /** Filter by NRS compliance flag */
-    public static Specification<Invoice> hasComplianceFlag(ComplianceFlag flag) {
-        if (flag == null) return null;
-        return (root, query, cb) ->
-                cb.equal(root.get("complianceFlag"), flag);
-    }
-
     /**
      * Combine all optional filters into one Specification.
-     * Any null filter is silently ignored by Spring Data.
+     * Any null parameter is silently skipped.
+     * Always returns a non-null Specification (falls back to match-all if no filters given).
      */
     public static Specification<Invoice> buildFilter(
             UUID taxpayerId,
@@ -85,11 +39,61 @@ public class InvoiceSpecification {
             InvoiceStatus status,
             ComplianceFlag complianceFlag) {
 
-        return Specification.where(hasTaxpayerId(taxpayerId))
-                .and(taxpayerMatches(search))
-                .and(submittedFrom(from))
-                .and(submittedTo(to))
-                .and(hasStatus(status))
-                .and(hasComplianceFlag(complianceFlag));
+        return (root, query, cb) -> {
+            List<jakarta.persistence.criteria.Predicate> predicates = new ArrayList<>();
+
+            // Determine if this is a count query (used by Spring Data for pagination).
+            // fetch() is illegal in count queries — use a plain join instead.
+            boolean isCountQuery = query.getResultType().equals(Long.class)
+                    || query.getResultType().equals(long.class);
+
+            if (search != null && !search.isBlank()) {
+                // Join on taxpayer for name/TIN predicate
+                Join<Invoice, Taxpayer> taxpayerJoin = root.join("taxpayer", JoinType.INNER);
+                String pattern = "%" + search.toLowerCase() + "%";
+                predicates.add(cb.or(
+                        cb.like(cb.lower(taxpayerJoin.get("name")), pattern),
+                        cb.like(cb.lower(taxpayerJoin.get("tin")),  pattern)
+                ));
+            } else {
+                // No search predicate needed — but we still need taxpayer data in the
+                // SELECT query to build the DTO. Use fetch for SELECT, plain join for COUNT.
+                if (isCountQuery) {
+                    root.join("taxpayer", JoinType.INNER);
+                } else {
+                    root.fetch("taxpayer", JoinType.INNER);
+                }
+            }
+
+            // Filter by exact taxpayer UUID
+            if (taxpayerId != null) {
+                predicates.add(cb.equal(root.get("taxpayer").get("id"), taxpayerId));
+            }
+
+            // Filter by submission date >= fromDate (inclusive, start of day UTC)
+            if (from != null) {
+                OffsetDateTime start = from.atStartOfDay().atOffset(ZoneOffset.UTC);
+                predicates.add(cb.greaterThanOrEqualTo(root.get("submittedAt"), start));
+            }
+
+            // Filter by submission date <= toDate (inclusive, end of day UTC)
+            if (to != null) {
+                OffsetDateTime end = to.plusDays(1).atStartOfDay().atOffset(ZoneOffset.UTC);
+                predicates.add(cb.lessThan(root.get("submittedAt"), end));
+            }
+
+            // Filter by submission status
+            if (status != null) {
+                predicates.add(cb.equal(root.get("submissionStatus"), status));
+            }
+
+            // Filter by compliance flag
+            if (complianceFlag != null) {
+                predicates.add(cb.equal(root.get("complianceFlag"), complianceFlag));
+            }
+
+            // cb.and() with empty array → "1=1" match-all predicate
+            return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
+        };
     }
 }
