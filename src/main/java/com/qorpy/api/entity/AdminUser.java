@@ -63,6 +63,9 @@ public class AdminUser {
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
 
+    @Column(name = "token_version", nullable = false)
+    private int tokenVersion = 0;
+
     @PrePersist
     protected void onCreate() {
         createdAt = OffsetDateTime.now();

@@ -1,5 +1,6 @@
 package com.qorpy.api.security;
 
+import com.qorpy.api.entity.AdminUser;
 import com.qorpy.api.respository.BlacklistedTokenRepository;
 import com.qorpy.api.util.JwtUtils;
 import jakarta.servlet.FilterChain;
@@ -48,7 +49,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         jwt = authHeader.substring(7);
 
-
         if (blacklistRepo.existsByToken(jwt)) {
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
             response.getWriter().write("Token has been invalidated.");
@@ -57,28 +57,40 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         userEmail = jwtUtils.extractEmail(jwt);
 
-
         if (userEmail != null && SecurityContextHolder.getContext().getAuthentication() == null) {
 
             UserDetails userDetails = this.userDetailsService.loadUserByUsername(userEmail);
 
-
-            if (jwtUtils.isTokenValid(jwt, userDetails.getUsername())) {
-
-
-                UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
-                        userDetails,
-                        null,
-                        userDetails.getAuthorities()
-                );
-
-                authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-
-
-                SecurityContextHolder.getContext().setAuthentication(authToken);
+            // Reject if account is disabled (deactivated)
+            if (!userDetails.isEnabled()) {
+                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                response.getWriter().write("Account is deactivated");
+                return;
             }
-        }
 
+            // Validate token including tokenVersion
+            boolean isValid;
+            if (userDetails instanceof AdminUserDetails) {
+                AdminUser adminUser = ((AdminUserDetails) userDetails).getAdminUser();
+                isValid = jwtUtils.isTokenValid(jwt, userDetails.getUsername(), adminUser.getTokenVersion());
+            } else {
+                isValid = jwtUtils.isTokenValid(jwt, userDetails.getUsername());
+            }
+
+            if (!isValid) {
+                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                response.getWriter().write("Token has been invalidated");
+                return;
+            }
+
+            UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
+                    userDetails,
+                    null,
+                    userDetails.getAuthorities()
+            );
+            authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+            SecurityContextHolder.getContext().setAuthentication(authToken);
+        }
 
         filterChain.doFilter(request, response);
     }

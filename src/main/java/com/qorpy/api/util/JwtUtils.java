@@ -28,6 +28,7 @@ public class JwtUtils {
         return Jwts.builder()
                 .subject(user.getEmail())
                 .claim("role", user.getRole().name())
+                .claim("tokenVersion", user.getTokenVersion())
                 .issuedAt(new Date())
                 .expiration(new Date((new Date()).getTime() + jwtExpirationMs))
                 .signWith(getSigningKey())
@@ -38,6 +39,19 @@ public class JwtUtils {
         return extractClaim(token, Claims::getSubject);
     }
 
+    public Integer extractTokenVersion(String token) {
+        return extractClaim(token, claims -> claims.get("tokenVersion", Integer.class));
+    }
+
+    public boolean isTokenValid(String token, String userEmail, Integer currentTokenVersion) {
+        final String email = extractEmail(token);
+        final Integer tokenVersion = extractTokenVersion(token);
+        return (email.equals(userEmail))
+                && !isTokenExpired(token)
+                && (tokenVersion != null && tokenVersion.equals(currentTokenVersion));
+    }
+
+    // Keep the original method for backward compatibility (used in login where version isn't needed)
     public boolean isTokenValid(String token, String userEmail) {
         final String email = extractEmail(token);
         return (email.equals(userEmail)) && !isTokenExpired(token);

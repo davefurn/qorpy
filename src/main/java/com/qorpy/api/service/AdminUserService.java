@@ -1,6 +1,7 @@
 package com.qorpy.api.service;
 
 import com.qorpy.api.dto.request.admin.AdminUserCreateRequest;
+import com.qorpy.api.dto.request.admin.DeactivateUserRequest;
 import com.qorpy.api.dto.request.admin.UpdateAdminUserRequest;
 import com.qorpy.api.dto.response.AdminUserDto;
 import com.qorpy.api.entity.AdminUser;
@@ -30,6 +31,7 @@ public class AdminUserService {
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
     private final AuditLogService auditLogService;
+    private final SessionService sessionService;
 
     public Page<AdminUserDto> getAllUsers(String search, Pageable pageable) {
         Page<AdminUser> userPage;
@@ -71,20 +73,17 @@ public class AdminUserService {
         AdminUser userToUpdate = adminUserRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
 
-        // Prevent editing another Super Admin account
         if (userToUpdate.getRole() == AdminRole.SUPER_ADMIN &&
                 !userToUpdate.getId().equals(updatedBy.getId())) {
             throw new BusinessException("Cannot edit another Super Admin account");
         }
 
-        // Prevent self-role change if currently Super Admin (downgrading themselves)
         if (userToUpdate.getId().equals(updatedBy.getId()) &&
                 updatedBy.getRole() == AdminRole.SUPER_ADMIN &&
                 request.getRole() != AdminRole.SUPER_ADMIN) {
             throw new BusinessException("Super Admin cannot downgrade their own role");
         }
 
-        // Capture before state as Map for audit log
         Map<String, Object> before = Map.of(
                 "fullName", userToUpdate.getFullName(),
                 "role", userToUpdate.getRole().name()
@@ -95,7 +94,6 @@ public class AdminUserService {
 
         AdminUser saved = adminUserRepository.save(userToUpdate);
 
-        // Capture after state as Map for audit log
         Map<String, Object> after = Map.of(
                 "fullName", saved.getFullName(),
                 "role", saved.getRole().name()
@@ -105,6 +103,72 @@ public class AdminUserService {
                 saved.getId(), before, after);
 
         return toDto(saved);
+    }
+
+    @Transactional
+    public void deactivateUser(UUID userId, DeactivateUserRequest request, AdminUser performedBy) {
+        AdminUser userToDeactivate = adminUserRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
+
+        // Prevent deactivating own account (Super Admin cannot lock themselves out)
+        if (userToDeactivate.getId().equals(performedBy.getId())) {
+            throw new BusinessException("You cannot deactivate your own account");
+        }
+
+        // Prevent deactivating another Super Admin?
+        if (userToDeactivate.getRole() == AdminRole.SUPER_ADMIN) {
+            throw new BusinessException("Cannot deactivate another Super Admin account");
+        }
+
+        // Already inactive?
+        if (userToDeactivate.getStatus() == AdminStatus.INACTIVE) {
+            throw new BusinessException("Account is already deactivated");
+        }
+
+        Map<String, Object> before = Map.of(
+                "status", userToDeactivate.getStatus().name()
+        );
+
+        userToDeactivate.setStatus(AdminStatus.INACTIVE);
+        AdminUser saved = adminUserRepository.save(userToDeactivate);
+
+        // Invalidate all active sessions for this user
+        sessionService.invalidateUserSessions(saved.getId());
+
+        Map<String, Object> after = Map.of(
+                "status", saved.getStatus().name(),
+                "reason", request.getReason()
+        );
+
+        auditLogService.logActionWithDetails(performedBy, "ACCOUNT_DEACTIVATED", "ADMIN_USER",
+                saved.getId(), before, after);
+    }
+
+    @Transactional
+    public void reactivateUser(UUID userId, AdminUser performedBy) {
+        AdminUser userToReactivate = adminUserRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
+
+        if (userToReactivate.getStatus() == AdminStatus.ACTIVE) {
+            throw new BusinessException("Account is already active");
+        }
+
+        Map<String, Object> before = Map.of(
+                "status", userToReactivate.getStatus().name()
+        );
+
+        userToReactivate.setStatus(AdminStatus.ACTIVE);
+        // Reset failed attempts on reactivation
+        userToReactivate.setFailedAttempts(0);
+        userToReactivate.setLockedUntil(null);
+        AdminUser saved = adminUserRepository.save(userToReactivate);
+
+        Map<String, Object> after = Map.of(
+                "status", saved.getStatus().name()
+        );
+
+        auditLogService.logActionWithDetails(performedBy, "ACCOUNT_REACTIVATED", "ADMIN_USER",
+                saved.getId(), before, after);
     }
 
     private String generateTempPassword() {

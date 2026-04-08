@@ -31,27 +31,29 @@ public class AuthService {
         AdminUser user = userRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> new BadCredentialsException("Invalid credentials"));
 
+        // Check if account is deactivated
+        if (user.getStatus() == AdminStatus.INACTIVE) {
+            throw new RuntimeException("Account is deactivated. Please contact an administrator.");
+        }
 
+        // Check if account is locked
         if (user.getLockedUntil() != null && user.getLockedUntil().isAfter(OffsetDateTime.now())) {
             throw new RuntimeException("Account is temporarily locked due to multiple failed attempts. Please try again later.");
         }
 
-
+        // Check password
         if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
             handleFailedLogin(user);
             throw new BadCredentialsException("Invalid credentials");
         }
 
-
+        // Successful login - reset failed attempts and lock, update last login
         user.setFailedAttempts(0);
         user.setLockedUntil(null);
         user.setLastLoginAt(OffsetDateTime.now());
-        user.setStatus(AdminStatus.ACTIVE);
         userRepository.save(user);
 
-
         auditLogService.logAction(user, "LOGIN", "ADMIN_USER", user.getId());
-
 
         String token = jwtUtils.generateToken(user);
 
