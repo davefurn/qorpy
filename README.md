@@ -123,3 +123,5 @@ You can use this URL to access your API remotely from any device or share it for
 ## License
 
 This project is for **internal use only** and is considered **proprietary**.
+License: Internal Use Only (Proprietary)# qorpy
+
