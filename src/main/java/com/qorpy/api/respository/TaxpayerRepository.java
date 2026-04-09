@@ -1,6 +1,7 @@
 package com.qorpy.api.respository;
 
 import com.qorpy.api.entity.Taxpayer;
+import com.qorpy.api.enums.AccountStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -19,4 +20,5 @@ public interface TaxpayerRepository extends JpaRepository<Taxpayer, UUID> {
 
     @Query("SELECT COUNT(DISTINCT t.id) FROM Taxpayer t JOIN Invoice i ON i.taxpayer.id = t.id")
     long countDistinctTaxpayersWithInvoices();
+    long countByAccountStatus(AccountStatus accountStatus);
 }
