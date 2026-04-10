@@ -26,16 +26,22 @@ public interface InvoiceRepository extends JpaRepository<Invoice, UUID>, JpaSpec
     List<Invoice> findTop10ByTaxpayerIdOrderBySubmittedAtDesc(@Param("taxpayerId") UUID taxpayerId,
                                                               org.springframework.data.domain.Pageable pageable);
 
-    @Query("""
-    SELECT CAST(i.submittedAt AS java.time.LocalDate) AS day,
-           i.complianceFlag                           AS flag,
-           COUNT(i.id)                                AS cnt
-    FROM Invoice i
-    WHERE i.submittedAt BETWEEN :from AND :to
-    GROUP BY CAST(i.submittedAt AS java.time.LocalDate), i.complianceFlag
-    ORDER BY CAST(i.submittedAt AS java.time.LocalDate) ASC
-""")
-    List<Object[]> findDailyComplianceCounts(
+    @Query(value = """
+            SELECT DATE(i.submitted_at AT TIME ZONE 'UTC') AS day,
+                   i.compliance_flag                       AS flag,
+                   COUNT(i.id)                             AS cnt
+            FROM invoices i
+            WHERE i.submitted_at BETWEEN :from AND :to
+            GROUP BY DATE(i.submitted_at AT TIME ZONE 'UTC'), i.compliance_flag
+            ORDER BY DATE(i.submitted_at AT TIME ZONE 'UTC') ASC
+            """, nativeQuery = true)
+    List<DailyComplianceCount> findDailyComplianceCounts(
             @Param("from") OffsetDateTime from,
             @Param("to")   OffsetDateTime to);
+
+    interface DailyComplianceCount {
+        java.sql.Date getDay();
+        String getFlag();
+        long getCnt();
+    }
 }

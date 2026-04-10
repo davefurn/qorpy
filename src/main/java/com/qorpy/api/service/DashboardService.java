@@ -2,6 +2,7 @@ package com.qorpy.api.service;
 
 import com.qorpy.api.dto.response.DashboardMetricsDto;
 import com.qorpy.api.dto.response.InvoiceTrendPointDto;
+import com.qorpy.api.dto.response.TopNonCompliantProjection;
 import com.qorpy.api.dto.response.TopNonCompliantTaxpayerDto;
 import com.qorpy.api.enums.AccountStatus;
 import com.qorpy.api.enums.ComplianceFlag;
@@ -12,9 +13,10 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
-import java.util.ArrayList;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.TreeMap;
 import java.util.UUID;
@@ -89,23 +91,28 @@ public class DashboardService {
     private List<InvoiceTrendPointDto> buildTrendChart(
             int periodDays, OffsetDateTime from, OffsetDateTime to) {
 
-        List<Object[]> rows = invoiceRepository.findDailyComplianceCounts(from, to);
+        DateTimeFormatter fmt = DateTimeFormatter.ISO_LOCAL_DATE;
 
-        // One entry per date: [compliant, nonCompliant, total]
+        // Seed every date in the range with zero — guarantees no gaps in the chart
         TreeMap<String, long[]> buckets = new TreeMap<>();
+        LocalDate cursor = from.toLocalDate();
+        LocalDate end    = to.toLocalDate();
+        while (!cursor.isAfter(end)) {
+            buckets.put(cursor.format(fmt), new long[]{0L, 0L, 0L});
+            cursor = cursor.plusDays(1);
+        }
 
-        for (Object[] row : rows) {
-            String date   = row[0].toString();                          // LocalDate → String
-            ComplianceFlag flag = (ComplianceFlag) row[1];
-            long count    = ((Number) row[2]).longValue();
-
-            buckets.computeIfAbsent(date, k -> new long[]{0L, 0L, 0L}); // [compliant, nonCompliant, total]
-            if (flag == ComplianceFlag.COMPLIANT)     buckets.get(date)[0] += count;
-            if (flag == ComplianceFlag.NON_COMPLIANT) buckets.get(date)[1] += count;
+        // Merge actual DB counts into pre-seeded buckets
+        List<InvoiceRepository.DailyComplianceCount> rows = invoiceRepository.findDailyComplianceCounts(from, to);
+        for (InvoiceRepository.DailyComplianceCount row : rows) {
+            String date = row.getDay().toLocalDate().format(fmt);
+            long count  = row.getCnt();
+            buckets.computeIfAbsent(date, k -> new long[]{0L, 0L, 0L});
+            if (ComplianceFlag.COMPLIANT.name().equals(row.getFlag()))     buckets.get(date)[0] += count;
+            if (ComplianceFlag.NON_COMPLIANT.name().equals(row.getFlag())) buckets.get(date)[1] += count;
             buckets.get(date)[2] += count;
         }
 
-        // For 90-day period: collapse daily buckets into weekly ones
         if (periodDays > 30) {
             return collapseToWeekly(buckets);
         }
@@ -150,41 +157,40 @@ public class DashboardService {
     /**
      * US-019 — Top 10 taxpayers by non-compliant invoice count in the period.
      */
-    @SuppressWarnings("unchecked")
     private List<TopNonCompliantTaxpayerDto> getTopNonCompliant(
             OffsetDateTime from, OffsetDateTime to) {
 
-        List<Object[]> rows = em.createQuery(
-                        "SELECT t.id, t.name, t.tin, " +
-                                "COUNT(i.id), " +
-                                "SUM(CASE WHEN i.complianceFlag = 'NON_COMPLIANT' THEN 1 ELSE 0 END) " +
+        List<TopNonCompliantProjection> rows = em.createQuery(
+                        "SELECT t.id          AS taxpayerId, " +
+                                "t.name       AS taxpayerName, " +
+                                "t.tin        AS tin, " +
+                                "COUNT(i.id)  AS totalInvoices, " +
+                                "SUM(CASE WHEN i.complianceFlag = com.qorpy.api.enums.ComplianceFlag.NON_COMPLIANT THEN 1L ELSE 0L END) AS nonCompliantCount " +
                                 "FROM Invoice i JOIN i.taxpayer t " +
                                 "WHERE i.submittedAt BETWEEN :from AND :to " +
                                 "GROUP BY t.id, t.name, t.tin " +
-                                "ORDER BY SUM(CASE WHEN i.complianceFlag = 'NON_COMPLIANT' THEN 1 ELSE 0 END) DESC"
+                                "ORDER BY SUM(CASE WHEN i.complianceFlag = com.qorpy.api.enums.ComplianceFlag.NON_COMPLIANT THEN 1L ELSE 0L END) DESC",
+                        TopNonCompliantProjection.class
                 )
                 .setParameter("from", from)
                 .setParameter("to", to)
                 .setMaxResults(10)
                 .getResultList();
 
-        List<TopNonCompliantTaxpayerDto> result = new ArrayList<>();
-        for (Object[] row : rows) {
-            long total        = ((Number) row[3]).longValue();
-            long nonCompliant = ((Number) row[4]).longValue();
-            double rate       = total > 0
+        return rows.stream().map(row -> {
+            long total = row.getTotalInvoices();
+            long nonCompliant = row.getNonCompliantCount();
+            double rate = total > 0
                     ? Math.round(((total - nonCompliant) * 100.0 / total) * 100.0) / 100.0
                     : 0.0;
-
-            result.add(TopNonCompliantTaxpayerDto.builder()
-                    .taxpayerId((java.util.UUID) row[0])
-                    .taxpayerName((String) row[1])
-                    .tin((String) row[2])
+            return TopNonCompliantTaxpayerDto.builder()
+                    .taxpayerId(row.getTaxpayerId())
+                    .taxpayerName(row.getTaxpayerName())
+                    .tin(row.getTin())
                     .totalInvoices(total)
                     .nonCompliantCount(nonCompliant)
                     .complianceRate(rate)
-                    .build());
-        }
-        return result;
+                    .build();
+        }).collect(Collectors.toList());
     }
 }
