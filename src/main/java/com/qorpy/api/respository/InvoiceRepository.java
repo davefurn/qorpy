@@ -25,4 +25,17 @@ public interface InvoiceRepository extends JpaRepository<Invoice, UUID>, JpaSpec
     @Query("SELECT i FROM Invoice i JOIN FETCH i.taxpayer WHERE i.taxpayer.id = :taxpayerId ORDER BY i.submittedAt DESC")
     List<Invoice> findTop10ByTaxpayerIdOrderBySubmittedAtDesc(@Param("taxpayerId") UUID taxpayerId,
                                                               org.springframework.data.domain.Pageable pageable);
+
+    @Query("""
+    SELECT CAST(i.submittedAt AS java.time.LocalDate) AS day,
+           i.complianceFlag                           AS flag,
+           COUNT(i.id)                                AS cnt
+    FROM Invoice i
+    WHERE i.submittedAt BETWEEN :from AND :to
+    GROUP BY CAST(i.submittedAt AS java.time.LocalDate), i.complianceFlag
+    ORDER BY CAST(i.submittedAt AS java.time.LocalDate) ASC
+""")
+    List<Object[]> findDailyComplianceCounts(
+            @Param("from") OffsetDateTime from,
+            @Param("to")   OffsetDateTime to);
 }

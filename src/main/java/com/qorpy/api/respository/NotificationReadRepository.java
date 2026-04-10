@@ -11,4 +11,6 @@ public interface NotificationReadRepository extends JpaRepository<NotificationRe
     Optional<NotificationRead> findByNotificationIdAndAdminId(UUID notificationId, UUID adminId);
 
     long countByAdminIdAndIsReadFalse(UUID adminId);
+
+    long countByAdminId(UUID adminId);
 }

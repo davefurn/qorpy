@@ -6,6 +6,7 @@ import com.qorpy.api.dto.response.TopNonCompliantTaxpayerDto;
 import com.qorpy.api.enums.AccountStatus;
 import com.qorpy.api.enums.ComplianceFlag;
 import com.qorpy.api.respository.InvoiceRepository;
+import com.qorpy.api.respository.NotificationReadRepository;
 import com.qorpy.api.respository.NotificationRepository;
 import com.qorpy.api.respository.TaxpayerRepository;
 import jakarta.persistence.EntityManager;
@@ -17,6 +18,9 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.TreeMap;
+import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * EP-05 — Reporting & Analytics Dashboard (US-017, US-018, US-019)
@@ -27,7 +31,7 @@ public class DashboardService {
 
     private final InvoiceRepository invoiceRepository;
     private final TaxpayerRepository taxpayerRepository;
-    private final NotificationRepository notificationRepository;
+    private final NotificationReadRepository notificationReadRepository;
 
     @PersistenceContext
     private EntityManager em;
@@ -36,7 +40,7 @@ public class DashboardService {
      * US-017 — Summary KPI metrics + US-018 trend chart + US-019 top non-compliant.
      * All metrics are scoped to the given period (7 / 30 / 90 days).
      */
-    public DashboardMetricsDto getMetrics(int periodDays) {
+    public DashboardMetricsDto getMetrics(int periodDays, UUID currentAdminId) {
         OffsetDateTime now       = OffsetDateTime.now(ZoneOffset.UTC);
         OffsetDateTime periodStart  = now.minusDays(periodDays);
         OffsetDateTime prevStart    = periodStart.minusDays(periodDays);
@@ -46,7 +50,7 @@ public class DashboardService {
         long compliantCount  = invoiceRepository.countByComplianceFlagAndSubmittedAtBetween(
                 ComplianceFlag.COMPLIANT, periodStart, now);
         long activeTaxpayers = taxpayerRepository.countByAccountStatus(AccountStatus.ACTIVE);
-        long openAlerts      = notificationRepository.count(); // all notifications as open alerts
+        long openAlerts          = notificationReadRepository.countByAdminIdAndIsReadFalse(currentAdminId); // unread = isRead false records for this admin
 
         double complianceRate = totalInvoices > 0
                 ? Math.round((compliantCount * 100.0 / totalInvoices) * 100.0) / 100.0
@@ -87,35 +91,62 @@ public class DashboardService {
     private List<InvoiceTrendPointDto> buildTrendChart(
             int periodDays, OffsetDateTime from, OffsetDateTime to) {
 
-        List<InvoiceTrendPointDto> points = new ArrayList<>();
-        DateTimeFormatter fmt = DateTimeFormatter.ISO_LOCAL_DATE;
+        List<Object[]> rows = invoiceRepository.findDailyComplianceCounts(from, to);
 
-        boolean weekly = periodDays > 30;
-        int stepDays   = weekly ? 7 : 1;
+        // One entry per date: [compliant, nonCompliant, total]
+        TreeMap<String, long[]> buckets = new TreeMap<>();
 
-        OffsetDateTime cursor = from;
-        while (cursor.isBefore(to)) {
-            OffsetDateTime next = cursor.plusDays(stepDays).isAfter(to)
-                    ? to : cursor.plusDays(stepDays);
+        for (Object[] row : rows) {
+            String date   = row[0].toString();                          // LocalDate → String
+            ComplianceFlag flag = (ComplianceFlag) row[1];
+            long count    = ((Number) row[2]).longValue();
 
-            long compliant    = invoiceRepository.countByComplianceFlagAndSubmittedAtBetween(
-                    ComplianceFlag.COMPLIANT, cursor, next);
-            long nonCompliant = invoiceRepository.countByComplianceFlagAndSubmittedAtBetween(
-                    ComplianceFlag.NON_COMPLIANT, cursor, next);
-            long total        = invoiceRepository.countBySubmittedAtBetween(cursor, next);
-            long pending      = total - compliant - nonCompliant;
-
-            points.add(InvoiceTrendPointDto.builder()
-                    .date(cursor.toLocalDate().format(fmt))
-                    .compliant(compliant)
-                    .nonCompliant(nonCompliant)
-                    .pending(pending)
-                    .total(total)
-                    .build());
-
-            cursor = next;
+            buckets.computeIfAbsent(date, k -> new long[]{0L, 0L, 0L}); // [compliant, nonCompliant, total]
+            if (flag == ComplianceFlag.COMPLIANT)     buckets.get(date)[0] += count;
+            if (flag == ComplianceFlag.NON_COMPLIANT) buckets.get(date)[1] += count;
+            buckets.get(date)[2] += count;
         }
-        return points;
+
+        // For 90-day period: collapse daily buckets into weekly ones
+        if (periodDays > 30) {
+            return collapseToWeekly(buckets);
+        }
+
+        return buckets.entrySet().stream()
+                .map(e -> toPoint(e.getKey(), e.getValue()))
+                .collect(Collectors.toList());
+    }
+
+    private List<InvoiceTrendPointDto> collapseToWeekly(TreeMap<String, long[]> dailyBuckets) {
+
+        List<InvoiceTrendPointDto> weekly = new java.util.ArrayList<>();
+        String weekStart = null;
+        long[] acc = new long[3];
+        int dayCount = 0;
+
+        for (java.util.Map.Entry<String, long[]> e : dailyBuckets.entrySet()) {
+            if (dayCount % 7 == 0) {
+                if (weekStart != null) weekly.add(toPoint(weekStart, acc));
+                weekStart = e.getKey();
+                acc = new long[]{0L, 0L, 0L};
+            }
+            acc[0] += e.getValue()[0];
+            acc[1] += e.getValue()[1];
+            acc[2] += e.getValue()[2];
+            dayCount++;
+        }
+        if (weekStart != null) weekly.add(toPoint(weekStart, acc)); // flush last bucket
+        return weekly;
+    }
+
+    private InvoiceTrendPointDto toPoint(String date, long[] acc) {
+        return InvoiceTrendPointDto.builder()
+                .date(date)
+                .compliant(acc[0])
+                .nonCompliant(acc[1])
+                .pending(acc[2] - acc[0] - acc[1])
+                .total(acc[2])
+                .build();
     }
 
     /**
