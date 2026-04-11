@@ -14,10 +14,11 @@ import com.qorpy.api.respository.NotificationReadRepository;
 import com.qorpy.api.respository.NotificationRepository;
 import com.qorpy.api.respository.UserNotificationSettingsRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+
 
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -29,6 +30,7 @@ import java.util.stream.Collectors;
  */
 @Service
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class NotificationService {
 
     private final NotificationRepository notificationRepository;
@@ -107,6 +109,7 @@ public class NotificationService {
     /**
      * US-025 — Full notification history, filterable by severity and date range.
      */
+    @Transactional
     public Page<NotificationDto> getHistory(
             AlertSeverity severity,
             OffsetDateTime from,
@@ -133,6 +136,7 @@ public class NotificationService {
     /**
      * US-026 — Get notification email settings for the current admin.
      */
+    @Transactional
     public NotificationSettingsDto getSettings(AdminUser admin) {
         UserNotificationSettings settings = settingsRepository
                 .findByAdminId(admin.getId())

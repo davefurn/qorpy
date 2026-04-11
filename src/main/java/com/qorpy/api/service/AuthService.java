@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.Date;
@@ -25,7 +26,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtUtils jwtUtils;
     private final AuditLogService auditLogService;
-
+    @Transactional
     public AuthResponse authenticate(LoginRequest request) {
 
         AdminUser user = userRepository.findByEmail(request.getEmail())
@@ -75,7 +76,7 @@ public class AuthService {
         userRepository.save(user);
         auditLogService.logAction(null, "LOGIN_FAILED", "ADMIN_USER", user.getId());
     }
-
+    @Transactional
     public void logout(String authHeader) {
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
             String token = authHeader.substring(7);

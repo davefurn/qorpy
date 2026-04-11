@@ -25,9 +25,10 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
-
+import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class InvoiceService {
 
     private static final int EXPORT_MAX_ROWS = 5000;

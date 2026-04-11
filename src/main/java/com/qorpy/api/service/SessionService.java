@@ -10,6 +10,7 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+
 public class SessionService {
 
     private final AdminUserRepository adminUserRepository;

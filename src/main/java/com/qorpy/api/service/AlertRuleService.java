@@ -21,18 +21,21 @@ import java.util.stream.Collectors;
  */
 @Service
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class AlertRuleService {
 
     private final AlertRuleRepository alertRuleRepository;
     private final AuditLogService auditLogService;
 
     /** List all alert rules (active and inactive) */
+   @Transactional
     public List<AlertRuleDto> getAllRules() {
         return alertRuleRepository.findAllByOrderByCreatedAtDesc()
                 .stream().map(this::toDto).collect(Collectors.toList());
     }
 
     /** List only active rules */
+    @Transactional
     public List<AlertRuleDto> getActiveRules() {
         return alertRuleRepository.findByIsActiveTrue()
                 .stream().map(this::toDto).collect(Collectors.toList());

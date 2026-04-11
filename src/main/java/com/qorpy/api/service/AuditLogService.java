@@ -17,9 +17,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class AuditLogService {
 
     private final AuditLogRepository auditLogRepository;
@@ -56,6 +58,7 @@ public class AuditLogService {
      * US-020 / US-021 — Paginated, filterable audit log (Super Admin only).
      * All filter params are optional.
      */
+    @Transactional
     public Page<AuditLogDto> getAuditLog(
             OffsetDateTime from,
             OffsetDateTime to,

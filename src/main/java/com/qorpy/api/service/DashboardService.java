@@ -21,12 +21,14 @@ import java.util.List;
 import java.util.TreeMap;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * EP-05 — Reporting & Analytics Dashboard (US-017, US-018, US-019)
  */
 @Service
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class DashboardService {
 
     private final InvoiceRepository invoiceRepository;
