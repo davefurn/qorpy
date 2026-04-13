@@ -31,18 +31,18 @@ public class NotificationController {
     /**
      * US-024 — Bell icon data: unread count + 20 most recent notifications.
      */
-    @GetMapping("/bell")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'COMPLIANCE_OFFICER', 'VIEWER')")
-    public ResponseEntity<NotificationBellDto> getBellData(
-            @AuthenticationPrincipal AdminUserDetails currentUser) {
-        return ResponseEntity.ok(
-                notificationService.getBellData(currentUser.getAdminUser()));
-    }
+//    @GetMapping("/recent-notification")
+//    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'COMPLIANCE_OFFICER', 'VIEWER')")
+//    public ResponseEntity<NotificationBellDto> getBellData(
+//            @AuthenticationPrincipal AdminUserDetails currentUser) {
+//        return ResponseEntity.ok(
+//                notificationService.getBellData(currentUser.getAdminUser()));
+//    }
 
     /**
      * US-024 — Mark a single notification as read.
      */
-    @PatchMapping("/{notificationId}/read")
+    @PatchMapping("/{notificationId}/mark-as-read")
     @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'COMPLIANCE_OFFICER', 'VIEWER')")
     public ResponseEntity<NotificationDto> markAsRead(
             @PathVariable UUID notificationId,
@@ -54,7 +54,7 @@ public class NotificationController {
     /**
      * US-024 — Mark all notifications as read.
      */
-    @PatchMapping("/read-all")
+    @PatchMapping("/mark-all-as-read")
     @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'COMPLIANCE_OFFICER', 'VIEWER')")
     public ResponseEntity<Void> markAllAsRead(
             @AuthenticationPrincipal AdminUserDetails currentUser) {
