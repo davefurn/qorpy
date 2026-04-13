@@ -55,11 +55,23 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
     }
 
+    // Change FORBIDDEN to INTERNAL_SERVER_ERROR or BAD_REQUEST
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<ErrorResponse> handleRuntimeException(RuntimeException ex) {
         ErrorResponse error = new ErrorResponse(
+                HttpStatus.INTERNAL_SERVER_ERROR.value(),
+                ex.getMessage() != null ? ex.getMessage() : "An unexpected error occurred",
+                OffsetDateTime.now()
+        );
+        ex.printStackTrace(); // Keep this so you can see the actual error in the logs!
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+    }
+
+    @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
+    public ResponseEntity<ErrorResponse> handleAccessDenied(Exception ex) {
+        ErrorResponse error = new ErrorResponse(
                 HttpStatus.FORBIDDEN.value(),
-                ex.getMessage(),
+                "You do not have permission to perform this action.",
                 OffsetDateTime.now()
         );
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(error);
