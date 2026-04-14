@@ -175,6 +175,7 @@ public class AlertRuleService {
 
     private final AlertRuleRepository alertRuleRepository;
     private final AuditLogService auditLogService;
+    private final NotificationService notificationService;
 
     /** List all alert rules (active and inactive) */
     public List<AlertRuleDto> getAllRules() {
@@ -205,6 +206,16 @@ public class AlertRuleService {
         auditLogService.logActionWithDetails(admin, "ALERT_CONFIGURED", "ALERT_RULE",
                 saved.getId(), null, buildSafeMap(saved));
 
+        // 2. NEW: Broadcast the notification!
+        notificationService.createNotification(
+                "New Alert Rule Created",
+                "Rule '" + saved.getName() + "' was configured by " + admin.getFullName(),
+                saved.getSeverity(),
+                "ALERT_RULE",
+                saved.getId(),
+                saved
+        );
+
         return toDto(saved);
     }
 
@@ -226,6 +237,15 @@ public class AlertRuleService {
         // Safely capture the after state
         auditLogService.logActionWithDetails(admin, "ALERT_EDITED", "ALERT_RULE",
                 saved.getId(), before, buildSafeMap(saved));
+        // 2. NEW: Broadcast the notification!
+        notificationService.createNotification(
+                "New Alert Rule Created",
+                "Rule '" + saved.getName() + "' was configured by " + admin.getFullName(),
+                saved.getSeverity(),
+                "ALERT_RULE",
+                saved.getId(),
+                saved
+        );
 
         return toDto(saved);
     }
@@ -246,6 +266,15 @@ public class AlertRuleService {
 
         auditLogService.logActionWithDetails(admin, "ALERT_DEACTIVATED", "ALERT_RULE",
                 saved.getId(), before, after);
+        // 2. NEW: Broadcast the notification!
+        notificationService.createNotification(
+                "New Alert Rule Created",
+                "Rule '" + saved.getName() + "' was configured by " + admin.getFullName(),
+                saved.getSeverity(),
+                "ALERT_RULE",
+                saved.getId(),
+                saved
+        );
 
         return toDto(saved);
     }
@@ -266,6 +295,15 @@ public class AlertRuleService {
 
         auditLogService.logActionWithDetails(admin, "ALERT_CONFIGURED", "ALERT_RULE",
                 saved.getId(), before, after);
+        // 2. NEW: Broadcast the notification!
+        notificationService.createNotification(
+                "New Alert Rule Created",
+                "Rule '" + saved.getName() + "' was configured by " + admin.getFullName(),
+                saved.getSeverity(),
+                "ALERT_RULE",
+                saved.getId(),
+                saved
+        );
 
         return toDto(saved);
     }

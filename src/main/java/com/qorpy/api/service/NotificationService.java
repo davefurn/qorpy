@@ -4,10 +4,7 @@ import com.qorpy.api.dto.request.notification.UpdateNotificationSettingsRequest;
 import com.qorpy.api.dto.response.NotificationBellDto;
 import com.qorpy.api.dto.response.NotificationDto;
 import com.qorpy.api.dto.response.NotificationSettingsDto;
-import com.qorpy.api.entity.AdminUser;
-import com.qorpy.api.entity.Notification;
-import com.qorpy.api.entity.NotificationRead;
-import com.qorpy.api.entity.UserNotificationSettings;
+import com.qorpy.api.entity.*;
 import com.qorpy.api.enums.AlertSeverity;
 import com.qorpy.api.exception.ResourceNotFoundException;
 import com.qorpy.api.respository.NotificationReadRepository;
@@ -193,6 +190,26 @@ public class NotificationService {
                 .isRead(isRead)
                 .readAt(readAt)
                 .build();
+    }
+    @Transactional
+    public void createNotification(String title, String description, AlertSeverity severity,
+                                   String entityType, UUID entityId, AlertRule alertRule) {
+
+        Notification notification = Notification.builder()
+                .title(title)
+                .description(description)
+                .severity(severity)
+                .entityType(entityType)
+                .entityId(entityId)
+                .alertRule(alertRule)
+                // triggeredAt is handled by @PrePersist in the Entity
+                .build();
+
+        notificationRepository.save(notification);
+
+        // Note: We don't need to insert into notification_reads here!
+        // Your markAsRead() method smartly creates the read record using
+        // .orElseGet() the first time the admin clicks on it.
     }
 
     private NotificationSettingsDto toSettingsDto(UserNotificationSettings s, UUID adminId) {
